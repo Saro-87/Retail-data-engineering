@@ -1,0 +1,8 @@
+aws_region  = "ap-south-1"
+project_name = "retail-data-engineering"
+environment  = "dev"
+
+# Replace with a globally unique S3 bucket name
+bucket_name = "retail-data-engineering-saravanan-2026"
+
+glue_job_name = "retail-transaction-etl"

@@ -1,0 +1,122 @@
+﻿pipeline {
+    agent any
+
+    parameters {
+        choice(
+            name: 'ENVIRONMENT',
+            choices: ['dev', 'test', 'prod'],
+            description: 'Target deployment environment'
+        )
+
+        booleanParam(
+            name: 'APPLY',
+            defaultValue: false,
+            description: 'Apply Terraform changes'
+        )
+
+        string(
+            name: 'BUCKET_NAME',
+            defaultValue: 'retail-data-engineering-saravanan-2026',
+            description: 'Globally unique S3 bucket name'
+        )
+    }
+
+    environment {
+        TF_DIR = 'terraform'
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Terraform Format Check') {
+            steps {
+                powershell '''
+                    terraform -chdir=$env:TF_DIR fmt -check
+                '''
+            }
+        }
+
+        stage('Terraform Init') {
+            steps {
+                powershell '''
+                    terraform -chdir=$env:TF_DIR init -input=false
+                '''
+            }
+        }
+
+        stage('Terraform Validate') {
+            steps {
+                powershell '''
+                    terraform -chdir=$env:TF_DIR validate
+                '''
+            }
+        }
+
+        stage('Terraform Plan') {
+            steps {
+                powershell '''
+                    terraform -chdir=$env:TF_DIR plan `
+                      -input=false `
+                      -var="environment=$env:ENVIRONMENT" `
+                      -var="bucket_name=$env:BUCKET_NAME"
+                '''
+            }
+        }
+
+        stage('Production Approval') {
+            when {
+                allOf {
+                    expression {
+                        params.ENVIRONMENT == 'prod'
+                    }
+
+                    expression {
+                        params.APPLY
+                    }
+                }
+            }
+
+            steps {
+                input message: 'Approve production Terraform deployment?',
+                      ok: 'Approve Deployment'
+            }
+        }
+
+        stage('Terraform Apply') {
+            when {
+                expression {
+                    params.APPLY
+                }
+            }
+
+            steps {
+                powershell '''
+                    terraform -chdir=$env:TF_DIR apply `
+                      -input=false `
+                      -auto-approve `
+                      -var="environment=$env:ENVIRONMENT" `
+                      -var="bucket_name=$env:BUCKET_NAME"
+                '''
+            }
+        }
+    }
+
+    post {
+        always {
+            echo "Terraform pipeline completed for environment: ${params.ENVIRONMENT}"
+        }
+
+        success {
+            echo 'Terraform pipeline completed successfully.'
+        }
+
+        failure {
+            echo 'Terraform pipeline failed. Review the Jenkins console logs.'
+        }
+    }
+}
