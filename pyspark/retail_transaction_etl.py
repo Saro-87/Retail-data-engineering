@@ -1,4 +1,5 @@
-﻿from pyspark.sql import SparkSession
+﻿import sys
+from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import (
     StructType,
@@ -9,18 +10,45 @@ from pyspark.sql.types import (
 )
 
 # =========================================================
-# 1. Spark Session
+# 1. Spark Session and Dynamic Arguments
 # =========================================================
+
+def get_argument(name, default):
+    """Read --NAME value from command-line arguments."""
+    argument = f"--{name}"
+
+    if argument in sys.argv:
+        index = sys.argv.index(argument)
+
+        if index + 1 < len(sys.argv):
+            return sys.argv[index + 1]
+
+    return default
+
+
+SOURCE_FILE = get_argument(
+    "SOURCE_PATH",
+    "./data/transactions.csv"
+)
+
+OUTPUT_PATH = get_argument(
+    "OUTPUT_PATH",
+    "./data/output/region_daily_sales"
+)
+
 
 spark = (
     SparkSession.builder
     .appName("RetailTransactionETL")
-    .config("spark.hadoop.fs.file.impl","org.apache.hadoop.fs.LocalFileSystem").config("spark.hadoop.fs.permissions.umask-mode","000").getOrCreate()
+    .getOrCreate()
 )
 
 print("=" * 60)
 print("RETAIL TRANSACTION ETL STARTED")
 print("=" * 60)
+
+print(f"Source path : {SOURCE_FILE}")
+print(f"Output path : {OUTPUT_PATH}")
 
 
 # =========================================================
@@ -42,8 +70,6 @@ schema = StructType([
 # =========================================================
 # 3. Read CSV
 # =========================================================
-
-SOURCE_FILE = "./data/transactions.csv"
 
 df = (
     spark.read
@@ -119,11 +145,21 @@ print("\nSTEP 4 - DATA QUALITY CHECKS")
 df = (
     df
     .withColumn(
-        "normalized_date",
-        F.try_to_date(
-            F.col("transaction_date"),
-            "yyyy-MM-dd"
+        "normalized_timestamp",
+        F.coalesce(
+            F.to_timestamp(
+                F.col("transaction_date"),
+                "yyyy-MM-dd HH:mm:ss"
+            ),
+            F.to_timestamp(
+                F.col("transaction_date"),
+                "yyyy-MM-dd"
+            )
         )
+    )
+    .withColumn(
+        "normalized_date",
+        F.to_date("normalized_timestamp")
     )
 )
 
@@ -275,8 +311,6 @@ aggregated_df.show(
 
 print("\nSTEP 9 - WRITE PARQUET")
 
-OUTPUT_PATH = "./data/output/region_daily_sales"
-
 (
     aggregated_df
     .write
@@ -285,8 +319,6 @@ OUTPUT_PATH = "./data/output/region_daily_sales"
         "year",
         "month",
         "day"
-        
-        
     )
     .parquet(OUTPUT_PATH)
 )

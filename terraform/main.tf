@@ -199,6 +199,17 @@ resource "aws_iam_role_policy" "glue_s3_access" {
       },
 
       {
+        Sid    = "ReadGlueScript"
+        Effect = "Allow"
+
+        Action = [
+          "s3:GetObject"
+        ]
+
+        Resource = "${aws_s3_bucket.data_lake.arn}/scripts/retail_transaction_etl.py"
+      },
+
+      {
         Sid    = "WriteProcessedData"
         Effect = "Allow"
 
@@ -273,7 +284,7 @@ resource "aws_s3_object" "glue_script" {
   key    = "scripts/retail_transaction_etl.py"
   source = "${path.module}/../pyspark/retail_transaction_etl.py"
 
-  etag = filemd5("${path.module}/../pyspark/retail_transaction_etl.py")
+  source_hash = filemd5("${path.module}/../pyspark/retail_transaction_etl.py")
 
   server_side_encryption = "aws:kms"
   kms_key_id             = aws_kms_key.data_lake.arn
@@ -302,7 +313,12 @@ resource "aws_glue_job" "retail_transaction_etl" {
     "--enable-continuous-cloudwatch-log" = "true"
     "--enable-spark-ui"                  = "true"
     "--job-bookmark-option"              = "job-bookmark-enable"
-    "--TempDir"                          = "s3://${aws_s3_bucket.data_lake.bucket}/glue-temp/"
+    "--SOURCE_PATH"                      = "s3://${aws_s3_bucket.data_lake.bucket}/raw/transactions/"
+    "--OUTPUT_PATH"                      = "s3://${aws_s3_bucket.data_lake.bucket}/processed/region_daily_sales/"
+
+
+    "--TempDir" = "s3://${aws_s3_bucket.data_lake.bucket}/glue-temp/"
+
   }
 
   execution_property {

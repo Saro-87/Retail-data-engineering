@@ -1,4 +1,4 @@
-﻿pipeline {
+pipeline {
     agent any
 
     parameters {
@@ -23,6 +23,11 @@
 
     environment {
         TF_DIR = 'terraform'
+
+        PGHOST = 'localhost'
+        PGPORT = '5432'
+        PGDATABASE = 'retail_data_engineering'
+        PGUSER = 'postgres'
     }
 
     stages {
@@ -54,6 +59,27 @@
                 powershell '''
                     terraform -chdir=$env:TF_DIR validate
                 '''
+            }
+        }
+
+        stage('SQL Automated Tests') {
+            steps {
+                withCredentials([
+                    string(
+                        credentialsId: 'postgres-assessment-password',
+                        variable: 'PGPASSWORD'
+                    )
+                ]) {
+                    powershell '''
+                        Write-Host "Running PostgreSQL automated SQL tests..."
+
+                        py .\\tests\\run_sql_tests.py
+
+                        if ($LASTEXITCODE -ne 0) {
+                            throw "SQL automated tests failed."
+                        }
+                    '''
+                }
             }
         }
 
