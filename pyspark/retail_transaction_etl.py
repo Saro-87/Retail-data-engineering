@@ -1,4 +1,5 @@
 ﻿import sys
+
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import (
@@ -8,6 +9,7 @@ from pyspark.sql.types import (
     DoubleType,
     IntegerType
 )
+
 
 # =========================================================
 # 1. Spark Session and Dynamic Arguments
@@ -78,8 +80,10 @@ df = (
     .csv(SOURCE_FILE)
 )
 
+input_count = df.count()
+
 print("\nSTEP 1 - CSV READ")
-print(f"Records read: {df.count()}")
+print(f"Records read: {input_count}")
 
 
 # =========================================================
@@ -133,7 +137,9 @@ null_condition = (
 
 null_records = df.filter(null_condition)
 
-print(f"Records containing NULL values: {null_records.count()}")
+null_count = null_records.count()
+
+print(f"Records containing NULL values: {null_count}")
 
 
 # =========================================================
@@ -142,26 +148,57 @@ print(f"Records containing NULL values: {null_records.count()}")
 
 print("\nSTEP 4 - DATA QUALITY CHECKS")
 
+
+# ---------------------------------------------------------
+# 6.1 Safe Transaction Date Normalization
+# ---------------------------------------------------------
+#
+# Supported formats:
+#
+#   yyyy-MM-dd
+#   yyyy-MM-dd HH:mm:ss
+#
+# Regex is used first so Spark only applies the matching
+# date parser to the appropriate input format.
+#
+
+normalized_date = (
+    F.when(
+        F.col("transaction_date").rlike(
+            r"^\d{4}-\d{2}-\d{2}$"
+        ),
+        F.to_date(
+            F.col("transaction_date"),
+            "yyyy-MM-dd"
+        )
+    )
+    .when(
+        F.col("transaction_date").rlike(
+            r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$"
+        ),
+        F.to_date(
+            F.col("transaction_date"),
+            "yyyy-MM-dd HH:mm:ss"
+        )
+    )
+    .otherwise(
+        F.lit(None).cast("date")
+    )
+)
+
+
 df = (
     df
     .withColumn(
-        "normalized_timestamp",
-        F.coalesce(
-            F.to_timestamp(
-                F.col("transaction_date"),
-                "yyyy-MM-dd HH:mm:ss"
-            ),
-            F.to_timestamp(
-                F.col("transaction_date"),
-                "yyyy-MM-dd"
-            )
-        )
-    )
-    .withColumn(
         "normalized_date",
-        F.to_date("normalized_timestamp")
+        normalized_date
     )
 )
+
+
+# ---------------------------------------------------------
+# 6.2 Valid Payment Methods
+# ---------------------------------------------------------
 
 valid_payment_methods = [
     "Credit Card",
@@ -169,6 +206,11 @@ valid_payment_methods = [
     "UPI",
     "Cash"
 ]
+
+
+# ---------------------------------------------------------
+# 6.3 Data Quality Condition
+# ---------------------------------------------------------
 
 quality_condition = (
     F.col("transaction_id").isNotNull()
@@ -183,18 +225,28 @@ quality_condition = (
     & F.col("payment_method").isin(valid_payment_methods)
 )
 
-valid_quality_df = df.filter(quality_condition)
 
-rejected_quality_df = df.filter(~quality_condition)
+valid_quality_df = df.filter(
+    quality_condition
+)
+
+rejected_quality_df = df.filter(
+    ~quality_condition
+)
+
+
+valid_count = valid_quality_df.count()
+rejected_count = rejected_quality_df.count()
+
 
 print(
     f"Valid records before deduplication: "
-    f"{valid_quality_df.count()}"
+    f"{valid_count}"
 )
 
 print(
     f"Rejected records: "
-    f"{rejected_quality_df.count()}"
+    f"{rejected_count}"
 )
 
 
@@ -206,17 +258,33 @@ print("\nSTEP 5 - DEDUPLICATION")
 
 before_dedup = valid_quality_df.count()
 
-deduplicated_df = valid_quality_df.dropDuplicates(
-    ["transaction_id"]
+deduplicated_df = (
+    valid_quality_df
+    .dropDuplicates(
+        ["transaction_id"]
+    )
 )
 
 after_dedup = deduplicated_df.count()
 
-duplicates_removed = before_dedup - after_dedup
+duplicates_removed = (
+    before_dedup - after_dedup
+)
 
-print(f"Records before deduplication: {before_dedup}")
-print(f"Records after deduplication : {after_dedup}")
-print(f"Duplicates removed          : {duplicates_removed}")
+print(
+    f"Records before deduplication: "
+    f"{before_dedup}"
+)
+
+print(
+    f"Records after deduplication : "
+    f"{after_dedup}"
+)
+
+print(
+    f"Duplicates removed          : "
+    f"{duplicates_removed}"
+)
 
 
 # =========================================================
@@ -244,15 +312,21 @@ calendar_df = (
     normalized_df
     .withColumn(
         "year",
-        F.year("transaction_date_normalized")
+        F.year(
+            "transaction_date_normalized"
+        )
     )
     .withColumn(
         "month",
-        F.month("transaction_date_normalized")
+        F.month(
+            "transaction_date_normalized"
+        )
     )
     .withColumn(
         "day",
-        F.dayofmonth("transaction_date_normalized")
+        F.dayofmonth(
+            "transaction_date_normalized"
+        )
     )
 )
 
@@ -262,7 +336,10 @@ calendar_df.select(
     "year",
     "month",
     "day"
-).show(10, truncate=False)
+).show(
+    10,
+    truncate=False
+)
 
 
 # =========================================================
@@ -281,17 +358,26 @@ aggregated_df = (
         "day"
     )
     .agg(
-        F.countDistinct("transaction_id")
-        .alias("transaction_count"),
+        F.countDistinct(
+            "transaction_id"
+        ).alias(
+            "transaction_count"
+        ),
 
-        F.sum("quantity")
-        .alias("total_quantity"),
+        F.sum(
+            "quantity"
+        ).alias(
+            "total_quantity"
+        ),
 
         F.round(
-            F.sum("transaction_amount"),
+            F.sum(
+                "transaction_amount"
+            ),
             2
+        ).alias(
+            "total_sales"
         )
-        .alias("total_sales")
     )
     .orderBy(
         "transaction_date_normalized",
@@ -320,30 +406,70 @@ print("\nSTEP 9 - WRITE PARQUET")
         "month",
         "day"
     )
-    .parquet(OUTPUT_PATH)
+    .parquet(
+        OUTPUT_PATH
+    )
 )
 
-print(f"Parquet output written to: {OUTPUT_PATH}")
+print(
+    f"Parquet output written to: "
+    f"{OUTPUT_PATH}"
+)
 
 
 # =========================================================
 # 12. Final Summary
 # =========================================================
 
+aggregated_count = aggregated_df.count()
+final_count = deduplicated_df.count()
+
 print("\n" + "=" * 60)
 print("ETL SUMMARY")
 print("=" * 60)
 
-print(f"Input records             : {df.count()}")
-print(f"Rejected records          : {rejected_quality_df.count()}")
-print(f"Valid records             : {valid_quality_df.count()}")
-print(f"Duplicates removed       : {duplicates_removed}")
-print(f"Final records             : {deduplicated_df.count()}")
-print(f"Aggregated records        : {aggregated_df.count()}")
-print(f"Parquet output            : {OUTPUT_PATH}")
+print(
+    f"Input records             : "
+    f"{input_count}"
+)
+
+print(
+    f"NULL-containing records   : "
+    f"{null_count}"
+)
+
+print(
+    f"Rejected records          : "
+    f"{rejected_count}"
+)
+
+print(
+    f"Valid records             : "
+    f"{valid_count}"
+)
+
+print(
+    f"Duplicates removed        : "
+    f"{duplicates_removed}"
+)
+
+print(
+    f"Final records             : "
+    f"{final_count}"
+)
+
+print(
+    f"Aggregated records        : "
+    f"{aggregated_count}"
+)
+
+print(
+    f"Parquet output            : "
+    f"{OUTPUT_PATH}"
+)
 
 print("=" * 60)
-print("RETAIL TRANSACTION ETL COMPLETED")
+print("RETAIL TRANSACTION ETL COMPLETED SUCCESSFULLY")
 print("=" * 60)
 
 
