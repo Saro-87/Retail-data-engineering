@@ -35,31 +35,34 @@
 
         stage('Terraform Format Check') {
             steps {
-                powershell '''
-                    terraform -chdir=$env:TF_DIR fmt -check
+                sh '''
+                    terraform -chdir=$TF_DIR fmt -check
                 '''
             }
         }
 
         stage('Terraform Init') {
             steps {
-                powershell '''
-                    terraform -chdir=$env:TF_DIR init -input=false
+                sh '''
+                    terraform -chdir=$TF_DIR init -input=false
                 '''
             }
         }
 
         stage('Terraform Validate') {
             steps {
-                powershell '''
-                    terraform -chdir=$env:TF_DIR validate
+                sh '''
+                    terraform -chdir=$TF_DIR validate
                 '''
             }
         }
 
         stage('AWS Identity Check') {
             steps {
-                withAWS(credentials: 'ecr:ap-south-1:saro-GLUE', region: 'ap-south-1') {
+                withAWS(
+                    credentials: 'ecr:ap-south-1:saro-GLUE',
+                    region: 'ap-south-1'
+                ) {
                     sh '''
                         aws sts get-caller-identity
                     '''
@@ -69,12 +72,17 @@
 
         stage('Terraform Plan') {
             steps {
-                powershell '''
-                    terraform -chdir=$env:TF_DIR plan `
-                      -input=false `
-                      -var="environment=$env:ENVIRONMENT" `
-                      -var="bucket_name=$env:BUCKET_NAME"
-                '''
+                withAWS(
+                    credentials: 'ecr:ap-south-1:saro-GLUE',
+                    region: 'ap-south-1'
+                ) {
+                    sh '''
+                        terraform -chdir=$TF_DIR plan \
+                          -input=false \
+                          -var="environment=$ENVIRONMENT" \
+                          -var="bucket_name=$BUCKET_NAME"
+                    '''
+                }
             }
         }
 
@@ -105,13 +113,18 @@
             }
 
             steps {
-                powershell '''
-                    terraform -chdir=$env:TF_DIR apply `
-                      -input=false `
-                      -auto-approve `
-                      -var="environment=$env:ENVIRONMENT" `
-                      -var="bucket_name=$env:BUCKET_NAME"
-                '''
+                withAWS(
+                    credentials: 'ecr:ap-south-1:saro-GLUE',
+                    region: 'ap-south-1'
+                ) {
+                    sh '''
+                        terraform -chdir=$TF_DIR apply \
+                          -input=false \
+                          -auto-approve \
+                          -var="environment=$ENVIRONMENT" \
+                          -var="bucket_name=$BUCKET_NAME"
+                    '''
+                }
             }
         }
     }
