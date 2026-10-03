@@ -23,6 +23,7 @@ pipeline {
 
     environment {
         TF_DIR = 'terraform'
+        AWS_REGION = 'ap-south-1'
     }
 
     stages {
@@ -60,10 +61,11 @@ pipeline {
         stage('AWS Identity Check') {
             steps {
                 withAWS(
-                    credentials: 'ecr:ap-south-1:saro-GLUE',
-                    region: 'ap-south-1'
+                    credentials: 'jenkins-terraform-aws',
+                    region: "${AWS_REGION}"
                 ) {
                     sh '''
+                        echo "Checking AWS authentication..."
                         aws sts get-caller-identity
                     '''
                 }
@@ -73,10 +75,12 @@ pipeline {
         stage('Terraform Plan') {
             steps {
                 withAWS(
-                    credentials: 'ecr:ap-south-1:saro-GLUE',
-                    region: 'ap-south-1'
+                    credentials: 'jenkins-terraform-aws',
+                    region: "${AWS_REGION}"
                 ) {
                     sh '''
+                        echo "Running Terraform plan..."
+
                         terraform -chdir=$TF_DIR plan \
                           -input=false \
                           -var="environment=$ENVIRONMENT" \
@@ -100,8 +104,10 @@ pipeline {
             }
 
             steps {
-                input message: 'Approve production Terraform deployment?',
-                      ok: 'Approve Deployment'
+                input(
+                    message: 'Approve production Terraform deployment?',
+                    ok: 'Approve Deployment'
+                )
             }
         }
 
@@ -114,10 +120,12 @@ pipeline {
 
             steps {
                 withAWS(
-                    credentials: 'ecr:ap-south-1:saro-GLUE',
-                    region: 'ap-south-1'
+                    credentials: 'jenkins-terraform-aws',
+                    region: "${AWS_REGION}"
                 ) {
                     sh '''
+                        echo "Running Terraform apply..."
+
                         terraform -chdir=$TF_DIR apply \
                           -input=false \
                           -auto-approve \
