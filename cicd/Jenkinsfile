@@ -1,4 +1,4 @@
-pipeline {
+﻿pipeline {
     agent any
 
     parameters {
@@ -35,35 +35,45 @@ pipeline {
 
         stage('Terraform Format Check') {
             steps {
-                sh '''
-                    terraform -chdir=$TF_DIR fmt -check
+                powershell '''
+                    terraform -chdir=$env:TF_DIR fmt -check
                 '''
             }
         }
 
         stage('Terraform Init') {
             steps {
-                sh '''
-                    terraform -chdir=$TF_DIR init -input=false
+                powershell '''
+                    terraform -chdir=$env:TF_DIR init -input=false
                 '''
             }
         }
 
         stage('Terraform Validate') {
             steps {
-                sh '''
-                    terraform -chdir=$TF_DIR validate
+                powershell '''
+                    terraform -chdir=$env:TF_DIR validate
                 '''
+            }
+        }
+
+        stage('AWS Identity Check') {
+            steps {
+                withAWS(credentials: 'ecr:ap-south-1:saro-GLUE', region: 'ap-south-1') {
+                    sh '''
+                        aws sts get-caller-identity
+                    '''
+                }
             }
         }
 
         stage('Terraform Plan') {
             steps {
-                sh '''
-                    terraform -chdir=$TF_DIR plan \
-                      -input=false \
-                      -var="environment=$ENVIRONMENT" \
-                      -var="bucket_name=$BUCKET_NAME"
+                powershell '''
+                    terraform -chdir=$env:TF_DIR plan `
+                      -input=false `
+                      -var="environment=$env:ENVIRONMENT" `
+                      -var="bucket_name=$env:BUCKET_NAME"
                 '''
             }
         }
@@ -95,12 +105,12 @@ pipeline {
             }
 
             steps {
-                sh '''
-                    terraform -chdir=$TF_DIR apply \
-                      -input=false \
-                      -auto-approve \
-                      -var="environment=$ENVIRONMENT" \
-                      -var="bucket_name=$BUCKET_NAME"
+                powershell '''
+                    terraform -chdir=$env:TF_DIR apply `
+                      -input=false `
+                      -auto-approve `
+                      -var="environment=$env:ENVIRONMENT" `
+                      -var="bucket_name=$env:BUCKET_NAME"
                 '''
             }
         }
