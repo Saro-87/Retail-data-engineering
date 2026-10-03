@@ -1,4 +1,4 @@
-pipeline {
+﻿pipeline {
     agent any
 
     parameters {
@@ -44,9 +44,39 @@ pipeline {
 
         stage('Terraform Init') {
             steps {
-                sh '''
-                    terraform -chdir=$TF_DIR init -input=false
-                '''
+                withAWS(
+                    credentials: 'jenkins-terraform',
+                    region: "${AWS_REGION}"
+                ) {
+                    sh '''
+                        echo "========================================"
+                        echo "AWS Environment Check"
+                        echo "========================================"
+
+                        env | grep '^AWS_' | sed 's/=.*/=<set>/'
+
+                        echo ""
+                        echo "========================================"
+                        echo "AWS CLI Version"
+                        echo "========================================"
+
+                        aws --version
+
+                        echo ""
+                        echo "========================================"
+                        echo "AWS Caller Identity"
+                        echo "========================================"
+
+                        aws sts get-caller-identity
+
+                        echo ""
+                        echo "========================================"
+                        echo "Terraform Init"
+                        echo "========================================"
+
+                        terraform -chdir=$TF_DIR init -input=false
+                    '''
+                }
             }
         }
 
@@ -61,7 +91,7 @@ pipeline {
         stage('AWS Identity Check') {
             steps {
                 withAWS(
-                    credentials: 'jenkins-terraform-aws',
+                    credentials: 'jenkins-terraform',
                     region: "${AWS_REGION}"
                 ) {
                     sh '''
@@ -75,7 +105,7 @@ pipeline {
         stage('Terraform Plan') {
             steps {
                 withAWS(
-                    credentials: 'jenkins-terraform-aws',
+                    credentials: 'jenkins-terraform',
                     region: "${AWS_REGION}"
                 ) {
                     sh '''
@@ -120,7 +150,7 @@ pipeline {
 
             steps {
                 withAWS(
-                    credentials: 'jenkins-terraform-aws',
+                    credentials: 'jenkins-terraform',
                     region: "${AWS_REGION}"
                 ) {
                     sh '''
@@ -143,11 +173,11 @@ pipeline {
         }
 
         success {
-            echo 'Terraform pipeline completed successfully.'
+            echo "Terraform pipeline completed successfully."
         }
 
         failure {
-            echo 'Terraform pipeline failed. Review the Jenkins console logs.'
+            echo "Terraform pipeline failed. Review the Jenkins console logs."
         }
     }
 }
