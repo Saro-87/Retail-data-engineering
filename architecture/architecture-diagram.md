@@ -1,4 +1,12 @@
+﻿
 # Retail Data Engineering Platform — Architecture Diagram
+
+> **Implementation note:** This diagram represents the target/reference
+> architecture for the assessment. The hands-on AWS implementation deployed
+> S3, KMS, IAM, AWS Glue, CloudWatch, Athena and Terraform-managed resources.
+> The Kinesis, ECS/ALB, Secrets Manager and CloudTrail components shown in this
+> diagram represent the production/reference design unless explicitly stated
+> otherwise in the repository documentation.
 
 ```mermaid
 flowchart TB
